@@ -1,7 +1,7 @@
 # ASTRAM — Command Decision Engine
 ### A data-driven traffic management system for Bengaluru's Urban Traffic Authority
 
-> **Built at [Hackathon Name] · June 2026**
+> **Built at Flipkart GridLock 2.0 · June 2026**
 > Dataset: 8,173 incidents · November 2023 – April 2024 · 46 fields · 6 corridors
 
 ---

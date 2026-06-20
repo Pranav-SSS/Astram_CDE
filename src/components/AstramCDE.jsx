@@ -1,0 +1,1242 @@
+/**
+ * ASTRAM COMMAND DECISION ENGINE — v1.0
+ * Single-file runnable artifact.
+ * All data, logic, and UI inlined from the four-step implementation.
+ *
+ * Design brief: dark ops terminal aesthetic — operators work at 4 AM under
+ * fluorescent lights. Every number must be readable at a glance.
+ * Signature element: the live readiness ring that reacts to every slider move.
+ * No gradients, no illustrations — dense, functional, honest.
+ */
+
+import { useState, useMemo, useCallback } from "react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1 — LOCKED DATA MODEL
+// Every number derived from 8,173-record dataset. Nothing invented.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TOTAL_FLEET = 50;
+
+const SHIFT_WINDOWS = {
+  DAWN_PEAK:      { id:"DAWN_PEAK",      label:"Dawn Peak",      shortLabel:"Dawn",      hours:"04–08",  startHour:4,  endHour:8,  avgEventsPerDay:520, riskWeight:0.30, isDead:false, desc:"Freight curfew lifts. Primary breakdown window." },
+  COMMUTER_PEAK:  { id:"COMMUTER_PEAK",  label:"Commuter Peak",  shortLabel:"Morning",   hours:"09–12",  startHour:9,  endHour:12, avgEventsPerDay:93,  riskWeight:0.10, isDead:false, desc:"Lowest freight activity. Commuter vehicles only." },
+  AFTERNOON_LULL: { id:"AFTERNOON_LULL", label:"Afternoon Lull", shortLabel:"Lull",      hours:"13–16",  startHour:13, endHour:16, avgEventsPerDay:16,  riskWeight:0.05, isDead:true,  desc:"THE DEAD ZONE. Fewer than 9 events/day on average." },
+  EVENING_RUSH:   { id:"EVENING_RUSH",   label:"Evening Rush",   shortLabel:"Evening",   hours:"17–20",  startHour:17, endHour:20, avgEventsPerDay:405, riskWeight:0.25, isDead:false, desc:"Freight re-enters city. Commuter + freight overlap." },
+  NIGHT_PEAK:     { id:"NIGHT_PEAK",     label:"Night Peak",     shortLabel:"Night",     hours:"21–24",  startHour:21, endHour:24, avgEventsPerDay:588, riskWeight:0.30, isDead:false, desc:"Highest incident density. VIP protocol window." },
+};
+const WINDOW_ORDER = ["DAWN_PEAK","COMMUTER_PEAK","AFTERNOON_LULL","EVENING_RUSH","NIGHT_PEAK"];
+
+const RESOURCE_TYPES = {
+  INTERCEPTORS: { id:"INTERCEPTORS", label:"Towing / Interceptors", short:"Interceptors", fleet:28 },
+  WARDENS:      { id:"WARDENS",      label:"Traffic Wardens",        short:"Wardens",      fleet:14 },
+  BARRICADES:   { id:"BARRICADES",   label:"Barricade Teams",        short:"Barricades",   fleet:8  },
+};
+const RT_ORDER = ["INTERCEPTORS","WARDENS","BARRICADES"];
+
+const CORRIDORS = {
+  MYSORE_ROAD:    { id:"MYSORE_ROAD",    name:"Mysore Road",      tier:1, events:743, closures:82,  closureRate:0.110, mult:1.45, staging:"Toll Gate Mysore Road" },
+  BELLARY_ROAD_1: { id:"BELLARY_ROAD_1", name:"Bellary Road 1",   tier:1, events:610, closures:33,  closureRate:0.054, mult:1.45, staging:"Mekhri Circle"         },
+  TUMKUR_ROAD:    { id:"TUMKUR_ROAD",    name:"Tumkur Road",      tier:2, events:458, closures:12,  closureRate:0.026, mult:1.20, staging:"Yeshwanthpura Circle"  },
+  BELLARY_ROAD_2: { id:"BELLARY_ROAD_2", name:"Bellary Road 2",   tier:2, events:379, closures:12,  closureRate:0.032, mult:1.20, staging:null                    },
+  ORR_NORTH_1:    { id:"ORR_NORTH_1",    name:"ORR North 1",      tier:3, events:275, closures:22,  closureRate:0.080, mult:1.05, staging:"Nagavara-ORR Junc"     },
+  OLD_MADRAS_RD:  { id:"OLD_MADRAS_RD",  name:"Old Madras Road",  tier:3, events:263, closures:12,  closureRate:0.046, mult:1.05, staging:"K R Circle"            },
+  HOSUR_ROAD:     { id:"HOSUR_ROAD",     name:"Hosur Road",       tier:4, events:298, closures:17,  closureRate:0.057, mult:0.90, staging:"Silk Board Junc"       },
+  MAGADI_ROAD:    { id:"MAGADI_ROAD",    name:"Magadi Road",      tier:4, events:245, closures:10,  closureRate:0.041, mult:0.90, staging:null                    },
+};
+
+// Event-to-window mapping — DATA CALIBRATED (fixes previous simulator's VIP error)
+// VIP Movement is Dawn+Night ONLY — NOT Commuter Peak (previous simulator bug)
+const EVENT_MAP = {
+  VIP_MOVEMENT:    { label:"VIP Movement",    windows:["DAWN_PEAK","NIGHT_PEAK"],        closureProb:0.80, mult:0.45, isHighRisk:true  },
+  PUBLIC_EVENT:    { label:"Public Event",    windows:["EVENING_RUSH","NIGHT_PEAK"],     closureProb:0.46, mult:0.28, isHighRisk:true  },
+  PROCESSION:      { label:"Procession",      windows:["DAWN_PEAK","NIGHT_PEAK"],        closureProb:0.26, mult:0.18, isHighRisk:false },
+  PROTEST:         { label:"Protest",         windows:["NIGHT_PEAK"],                   closureProb:0.40, mult:0.22, isHighRisk:true  },
+  CONSTRUCTION_T1: { label:"Construction T1", windows:["EVENING_RUSH","NIGHT_PEAK"],     closureProb:0.27, mult:0.35, isHighRisk:false },
+  TREE_FALL:       { label:"Tree Fall",       windows:["DAWN_PEAK"],                    closureProb:0.39, mult:0.25, isHighRisk:false },
+};
+
+const WEATHER_STATES = {
+  DRY:          { id:"DRY",          label:"Dry",          mult:1.00, desc:"Standard allocation"       },
+  LIGHT_RAIN:   { id:"LIGHT_RAIN",   label:"Light Rain",   mult:1.35, desc:"Drizzle / fog"             },
+  HEAVY_MONSOON:{ id:"HEAVY_MONSOON",label:"Heavy Monsoon",mult:2.10, desc:"Heavy rain / flooding — 2.1× incidents" },
+};
+
+// Base prescriptions — Dawn + Dry + No Events (hardcoded from dataset)
+const BASE_PRESC = {
+  MYSORE_ROAD: { INTERCEPTORS:9, WARDENS:4, BARRICADES:3 },
+  MEKHRI:      { INTERCEPTORS:3, WARDENS:3, BARRICADES:2 },
+  ORR_NORTH:   { INTERCEPTORS:4, WARDENS:3, BARRICADES:2 },
+};
+const LOC_ORDER = ["MYSORE_ROAD","MEKHRI","ORR_NORTH"];
+const LOC_META  = {
+  MYSORE_ROAD: { label:"Mysore Road",   tier:1, staging:"Toll Gate Mysore Road", note:"743 events · 82 closures" },
+  MEKHRI:      { label:"Mekhri Circle", tier:1, staging:"Mekhri Circle junction", note:"#1 repeat junction · 64 incidents" },
+  ORR_NORTH:   { label:"ORR North",     tier:3, staging:"Nagavara-ORR Junc",     note:"275 events · disproportionate closure rate" },
+};
+
+const READINESS_THRESHOLDS = {
+  OPTIMAL:      { min:90, label:"Optimal",     color:"#34C759", ring:"#34C759" },
+  ADVISORY:     { min:75, label:"Advisory",    color:"#FF9500", ring:"#FF9500" },
+  WARNING:      { min:60, label:"Warning",     color:"#FF6B00", ring:"#FF6B00" },
+  CRITICAL_GAP: { min:0,  label:"Critical Gap",color:"#FF3B30", ring:"#FF3B30" },
+};
+
+const DEVIATION_REASONS = [
+  { id:"LOCAL_KNOWLEDGE",   label:"Local Knowledge",              desc:"On-ground intel not in the system"            },
+  { id:"WEATHER_OVERRIDE",  label:"Weather Override",             desc:"Conditions differ from selected state"        },
+  { id:"EQUIP_UNAVAILABLE", label:"Equipment Unavailable",        desc:"Units out of service or under maintenance"    },
+  { id:"PRIOR_DEPLOYMENT",  label:"Resources on Prior Deployment",desc:"Units committed from a previous incident"     },
+  { id:"DISAGREE_FORECAST", label:"Disagree with Forecast",       desc:"Commander assessment differs from model"      },
+  { id:"OTHER",             label:"Other",                        desc:"Reason not listed — use note field"           },
+];
+
+const DATA_QUALITY = {
+  junction:        { rate:0.307, phase2Target:0.85, status:"critical" },
+  reasonBreakdown: { rate:0.034, phase2Target:0.80, status:"unusable" },
+};
+
+const NORTH_STAR = { baseline:0.0, phase3Gate:0.60, target12m:0.80 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2 — CORE BUSINESS LOGIC (pure functions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MONTH_MULT = { 1:1.49, 2:1.38, 3:2.0, 4:1.0, 5:1.0, 6:1.0, 7:1.0, 8:1.0, 9:1.0, 10:1.0, 11:1.0, 12:1.80 };
+const DOW_MULT   = { 0:1.30, 1:1.30, 2:1.05, 3:1.10, 4:1.15, 5:1.05, 6:1.15 };
+const BASE_RATE  = {
+  DAWN_PEAK:      { t1:18, t2:12, t3:8,  t4:6  },
+  COMMUTER_PEAK:  { t1:4,  t2:3,  t3:2,  t4:1  },
+  AFTERNOON_LULL: { t1:1,  t2:1,  t3:0,  t4:0  },
+  EVENING_RUSH:   { t1:14, t2:9,  t3:6,  t4:5  },
+  NIGHT_PEAK:     { t1:20, t2:14, t3:9,  t4:7  },
+};
+
+function computeWindowDemand(windowId, tier, weather, events, month, dow) {
+  let v = BASE_RATE[windowId]?.[`t${tier}`] ?? 0;
+  v *= MONTH_MULT[month] ?? 1.0;
+  v *= WEATHER_STATES[weather]?.mult ?? 1.0;
+  for (const eid of events) {
+    const m = EVENT_MAP[eid]; if (!m) continue;
+    if (m.windows.includes(windowId)) v *= (1 + m.mult);
+  }
+  if (["DAWN_PEAK","NIGHT_PEAK","EVENING_RUSH"].includes(windowId)) v *= DOW_MULT[dow] ?? 1.0;
+  return Math.round(v * 10) / 10;
+}
+
+function computeFullSurface(ctx) {
+  const { weather, events, month, dow } = ctx;
+  const s = {};
+  for (const [cid, c] of Object.entries(CORRIDORS)) {
+    s[cid] = {};
+    for (const wid of WINDOW_ORDER) s[cid][wid] = computeWindowDemand(wid, c.tier, weather, events, month, dow);
+  }
+  return s;
+}
+
+function computePrescription(locId, rt, windowId, weather, events) {
+  let base = BASE_PRESC[locId]?.[rt] ?? 0;
+  const ww = SHIFT_WINDOWS[windowId]?.riskWeight ?? 0.30;
+  base *= ww / 0.30; // scale from dawn baseline
+  base *= Math.sqrt(WEATHER_STATES[weather]?.mult ?? 1.0);
+  for (const eid of events) {
+    const m = EVENT_MAP[eid]; if (!m) continue;
+    if (!m.windows.includes(windowId)) continue;
+    const emphasis = { VIP_MOVEMENT:{I:0.1,W:0.3,B:0.9}, PUBLIC_EVENT:{I:0.2,W:0.5,B:0.8},
+      PROCESSION:{I:0.1,W:0.8,B:0.6}, PROTEST:{I:0.1,W:0.4,B:0.9},
+      CONSTRUCTION_T1:{I:0.2,W:0.9,B:0.6}, TREE_FALL:{I:0.5,W:0.3,B:0.7} }[eid] ?? {I:0.3,W:0.3,B:0.2};
+    const k = rt==="INTERCEPTORS"?"I":rt==="WARDENS"?"W":"B";
+    base += base * (emphasis[k]??0) * m.mult;
+  }
+  return Math.max(0, Math.round(base));
+}
+
+function buildPrescMatrix(windowId, weather, events) {
+  const mx = {};
+  for (const loc of LOC_ORDER) {
+    mx[loc] = {};
+    for (const rt of RT_ORDER) mx[loc][rt] = computePrescription(loc, rt, windowId, weather, events);
+    mx[loc]._total = RT_ORDER.reduce((s, rt) => s + mx[loc][rt], 0);
+  }
+  return mx;
+}
+
+function buildDefaultAlloc(presc) {
+  const a = {};
+  for (const loc of LOC_ORDER) {
+    a[loc] = {};
+    for (const rt of RT_ORDER) a[loc][rt] = presc[loc]?.[rt] ?? 0;
+  }
+  return a;
+}
+
+function totalAllocated(alloc) {
+  return LOC_ORDER.reduce((s, l) => s + RT_ORDER.reduce((ss, rt) => ss + (alloc[l]?.[rt] ?? 0), 0), 0);
+}
+
+function buildCompMatrix(presc, alloc) {
+  const mx = {};
+  for (const loc of LOC_ORDER) {
+    mx[loc] = {};
+    let locAlloc=0, locPresc=0;
+    for (const rt of RT_ORDER) {
+      const p = presc[loc]?.[rt] ?? 0;
+      const a = alloc[loc]?.[rt] ?? 0;
+      const gap = a - p;
+      const devPct = p > 0 ? Math.abs(gap)/p : (a>0?1:0);
+      const shortfall = Math.max(0,-gap);
+      const sev = shortfall<=0?"ok":shortfall<=2?"amber":"red";
+      mx[loc][rt] = { prescribed:p, allocated:a, gap, devPct, sev, flagged:devPct>0.20 };
+      locAlloc += a; locPresc += p;
+    }
+    const locGap = locAlloc - locPresc;
+    const locShort = Math.max(0,-locGap);
+    mx[loc]._t = { prescribed:locPresc, allocated:locAlloc, gap:locGap,
+      sev: locShort<=0?"ok":locShort<=2?"amber":"red" };
+  }
+  return mx;
+}
+
+function computeReadiness(presc, alloc, windowId, events) {
+  // Step 2: event-adjusted required units
+  let required = LOC_ORDER.reduce((s,l) => s + RT_ORDER.reduce((ss,rt) => ss+(presc[l]?.[rt]??0), 0), 0);
+  for (const eid of events) {
+    const m = EVENT_MAP[eid]; if (!m) continue;
+    if (m.windows.includes(windowId)) required = Math.round(required * (1 + m.closureProb * m.mult));
+  }
+  const allocated = totalAllocated(alloc);
+  const coverage  = required > 0 ? Math.min(allocated/required, 1.0) : 1.0;
+  const score     = Math.round(coverage * 100);
+  const shortfall = Math.max(0, required - allocated);
+
+  // Rule 1 override — event-context-aware critical shortfall
+  let rule1 = null;
+  for (const eid of events) {
+    const m = EVENT_MAP[eid]; if (!m) continue;
+    if (!m.windows.includes(windowId)) continue;
+    if (m.closureProb > 0.40 && shortfall > 5) {
+      rule1 = { eventId:eid, closureProb:m.closureProb, shortfall }; break;
+    }
+  }
+
+  let status;
+  if (rule1)          status = "CRITICAL_GAP";
+  else if (score>=90) status = "OPTIMAL";
+  else if (score>=75) status = "ADVISORY";
+  else if (score>=60) status = "WARNING";
+  else                status = "CRITICAL_GAP";
+
+  return { score, status, label:READINESS_THRESHOLDS[status].label,
+    color:READINESS_THRESHOLDS[status].color, rule1, required, allocated, shortfall,
+    surplus:Math.max(0, -shortfall) };
+}
+
+function shouldLog(comp, readiness) {
+  const reasons = [];
+  for (const loc of LOC_ORDER)
+    for (const rt of RT_ORDER)
+      if (comp[loc]?.[rt]?.flagged)
+        reasons.push({ type:"DEVIATION", loc, rt, ...comp[loc][rt] });
+  if (readiness.rule1) reasons.push({ type:"HIGH_RISK_SHORTFALL", ...readiness.rule1 });
+  return { should: reasons.length>0, reasons };
+}
+
+const fmtGap = g => g===0?"±0":g>0?`+${g}`:`${g}`;
+const fmtPct = p => `${Math.round(p*100)}%`;
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+function getDemandLevel(v) {
+  if (v===0) return "none";
+  if (v<5)   return "low";
+  if (v<12)  return "moderate";
+  if (v<20)  return "high";
+  return "critical";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DESIGN TOKENS
+// Dark ops terminal — fluorescent-readable at 4 AM.
+// Signature: live readiness ring reacts to every slider move.
+// Typography: monospace for numbers (data fidelity), sans for labels.
+// Palette: near-black surface, single accent per alert state, no gradients.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const T = {
+  surface:  "#0a0e13",
+  panel:    "#111720",
+  border:   "#1e2a38",
+  borderHi: "#2e3f52",
+  text:     "#d4dde8",
+  textDim:  "#5a7080",
+  textMid:  "#8aa0b0",
+  green:    "#34C759",
+  amber:    "#FF9500",
+  orange:   "#FF6B00",
+  red:      "#FF3B30",
+  blue:     "#4A9EFF",
+  purple:   "#BF5AF2",
+  teal:     "#32D74B",
+  // Resource type accents
+  intBlue:  "#4A9EFF",
+  wardGreen:"#32D74B",
+  barrPurp: "#BF5AF2",
+};
+
+const RTCOLOR = {
+  INTERCEPTORS: { text:"#4A9EFF", bg:"rgba(74,158,255,0.08)", border:"rgba(74,158,255,0.25)" },
+  WARDENS:      { text:"#32D74B", bg:"rgba(50,215,75,0.08)",  border:"rgba(50,215,75,0.25)"  },
+  BARRICADES:   { text:"#BF5AF2", bg:"rgba(191,90,242,0.08)", border:"rgba(191,90,242,0.25)" },
+};
+
+const TIER_COLOR = { 1:"#FF3B30", 2:"#FF9500", 3:"#FFD60A", 4:"#34C759", 5:"#5a7080" };
+
+const INTENSITY_STYLE = {
+  none:     { bg:"transparent",          text:T.textDim  },
+  low:      { bg:"rgba(74,158,255,0.10)",text:"#4A9EFF"  },
+  moderate: { bg:"rgba(74,158,255,0.22)",text:"#82bfff"  },
+  high:     { bg:"rgba(255,149,0,0.25)", text:"#FFB83D"  },
+  critical: { bg:"rgba(255,59,48,0.30)", text:"#FF6B61"  },
+};
+
+const ALERT_STYLE = {
+  OPTIMAL:      { bg:"rgba(52,199,89,0.08)",  border:T.green,  text:T.green  },
+  ADVISORY:     { bg:"rgba(255,149,0,0.10)",  border:T.amber,  text:T.amber  },
+  WARNING:      { bg:"rgba(255,107,0,0.12)",  border:T.orange, text:T.orange },
+  CRITICAL_GAP: { bg:"rgba(255,59,48,0.12)",  border:T.red,    text:T.red    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3 — MAIN DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function AstramCDE() {
+  const [tab,        setTab]        = useState("SITUATION");
+  const [windowId,   setWindowId]   = useState("DAWN_PEAK");
+  const [weather,    setWeather]    = useState("DRY");
+  const [events,     setEvents]     = useState([]);
+  const [shiftDate,  setShiftDate]  = useState(todayISO);
+  const [showModal,  setShowModal]  = useState(false);
+  const [lastLog,    setLastLog]    = useState(null);
+
+  const dateObj  = useMemo(() => new Date(shiftDate + "T00:00:00"), [shiftDate]);
+  const month    = useMemo(() => dateObj.getMonth()+1, [dateObj]);
+  const dow      = useMemo(() => dateObj.getDay(),     [dateObj]);
+
+  const presc = useMemo(
+    () => buildPrescMatrix(windowId, weather, events),
+    [windowId, weather, events]
+  );
+
+  const [alloc, setAlloc] = useState(() => buildDefaultAlloc(buildPrescMatrix("DAWN_PEAK","DRY",[])));
+
+  const handleWindowChange = useCallback((wid) => {
+    setWindowId(wid);
+    setAlloc(buildDefaultAlloc(buildPrescMatrix(wid, weather, events)));
+  }, [weather, events]);
+
+  const comp     = useMemo(() => buildCompMatrix(presc, alloc), [presc, alloc]);
+  const readiness= useMemo(() => computeReadiness(presc, alloc, windowId, events), [presc, alloc, windowId, events]);
+  const logCheck = useMemo(() => shouldLog(comp, readiness), [comp, readiness]);
+  const surface  = useMemo(() => computeFullSurface({ weather, events, month, dow }), [weather, events, month, dow]);
+  const totAlloc = useMemo(() => totalAllocated(alloc), [alloc]);
+  const reserve  = Math.max(0, TOTAL_FLEET - totAlloc);
+
+  const handleAllocChange = useCallback((loc, rt, v) => {
+    setAlloc(prev => ({ ...prev, [loc]: { ...prev[loc], [rt]: v } }));
+  }, []);
+
+  const toggleEvent = useCallback((eid) => {
+    setEvents(prev => prev.includes(eid) ? prev.filter(x=>x!==eid) : [...prev, eid]);
+  }, []);
+
+  const handleFinalise = useCallback(() => {
+    if (logCheck.should) { setShowModal(true); return; }
+    const log = { ts:new Date().toISOString(), windowId, weather, events, score:readiness.score, deviationReason:null };
+    setLastLog(log);
+  }, [logCheck, windowId, weather, events, readiness]);
+
+  const handleLogSubmit = useCallback(({ reason, note }) => {
+    const log = { ts:new Date().toISOString(), windowId, weather, events, score:readiness.score, deviationReason:reason, note };
+    setLastLog(log);
+    setShowModal(false);
+  }, [windowId, weather, events, readiness]);
+
+  const ast = ALERT_STYLE[readiness.status] ?? ALERT_STYLE.CRITICAL_GAP;
+
+  // SVG readiness ring constants
+  const RING_R = 38; const RING_STROKE = 6;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+  const ringOffset = RING_CIRC * (1 - readiness.score/100);
+
+  return (
+    <div style={{ minHeight:"100vh", background:T.surface, color:T.text, fontFamily:"'SF Mono', 'JetBrains Mono', 'Fira Code', monospace", fontSize:13 }}>
+
+      {showModal && (
+        <FeedbackModal
+          logCheck={logCheck} comp={comp} readiness={readiness}
+          presc={presc} alloc={alloc}
+          onSubmit={handleLogSubmit} onCancel={()=>setShowModal(false)}
+        />
+      )}
+
+      {/* ── MASTHEAD ── */}
+      <div style={{ background:T.panel, borderBottom:`1px solid ${T.border}`, padding:"8px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:7, height:7, borderRadius:"50%", background:T.green, boxShadow:`0 0 6px ${T.green}` }} />
+          <span style={{ color:T.textMid, letterSpacing:2, fontSize:11, textTransform:"uppercase" }}>
+            ASTRAM · Command Decision Engine · Bengaluru Traffic Authority
+          </span>
+        </div>
+        <span style={{ color:T.textDim, fontSize:11 }}>8,173 records · Nov 2023–Apr 2024</span>
+      </div>
+
+      {/* ── CONTEXT CONTROLS ── */}
+      <ContextBar
+        shiftDate={shiftDate} windowId={windowId} weather={weather} events={events}
+        onDate={setShiftDate} onWindow={handleWindowChange}
+        onWeather={setWeather} onEvent={toggleEvent}
+      />
+
+      {/* ── NORTH STAR BANNER ── */}
+      <NorthStarStrip />
+
+      {/* ── READINESS HEADER ── */}
+      <ReadinessHeader readiness={readiness} ast={ast} totAlloc={totAlloc} reserve={reserve}
+        ringOffset={ringOffset} RING_R={RING_R} RING_STROKE={RING_STROKE} RING_CIRC={RING_CIRC} />
+
+      {/* ── TAB BAR ── */}
+      <div style={{ background:T.panel, borderBottom:`1px solid ${T.border}`, padding:"0 20px", display:"flex" }}>
+        {[{ id:"SITUATION",label:"◉  Situation Awareness" },{ id:"DEPLOYMENT",label:"⊞  Deployment Planner" }].map(t => (
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{ padding:"10px 18px", fontSize:12, letterSpacing:1, border:"none",
+              background:"transparent", cursor:"pointer", transition:"color .15s",
+              borderBottom: tab===t.id ? `2px solid ${T.blue}` : "2px solid transparent",
+              color: tab===t.id ? T.blue : T.textDim,
+              marginBottom:-1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB CONTENT ── */}
+      <div style={{ padding:"20px", maxWidth:1200, margin:"0 auto" }}>
+        {tab==="SITUATION" && (
+          <SituationTab surface={surface} events={events} windowId={windowId}
+            onSwitch={()=>setTab("DEPLOYMENT")} />
+        )}
+        {tab==="DEPLOYMENT" && (
+          <DeploymentTab
+            windowId={windowId} presc={presc} alloc={alloc} comp={comp}
+            readiness={readiness} ast={ast} totAlloc={totAlloc} reserve={reserve}
+            logCheck={logCheck} lastLog={lastLog}
+            onAlloc={handleAllocChange} onFinalise={handleFinalise}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTEXT BAR
+// ─────────────────────────────────────────────────────────────────────────────
+function ContextBar({ shiftDate, windowId, weather, events, onDate, onWindow, onWeather, onEvent }) {
+  return (
+    <div style={{ background:T.panel, borderBottom:`1px solid ${T.border}`, padding:"8px 20px",
+      display:"flex", flexWrap:"wrap", gap:16, alignItems:"center" }}>
+
+      {/* Date */}
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <Lbl>Date</Lbl>
+        <input type="date" value={shiftDate} onChange={e=>onDate(e.target.value)}
+          style={{ background:T.surface, color:T.text, border:`1px solid ${T.border}`,
+            borderRadius:3, padding:"3px 8px", fontSize:12, fontFamily:"inherit" }} />
+      </div>
+
+      {/* Shift window */}
+      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <Lbl>Shift</Lbl>
+        {WINDOW_ORDER.map(wid => {
+          const w = SHIFT_WINDOWS[wid];
+          const on = wid===windowId;
+          return (
+            <Pill key={wid} active={on} dead={w.isDead} color={T.blue}
+              title={`${w.label} · ${w.hours} · ~${w.avgEventsPerDay} events/day\n${w.desc}`}
+              onClick={()=>onWindow(wid)}>
+              {w.shortLabel}{w.isDead?" ·dead":""}
+            </Pill>
+          );
+        })}
+      </div>
+
+      {/* Weather */}
+      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <Lbl>Weather</Lbl>
+        {Object.values(WEATHER_STATES).map(ws => (
+          <Pill key={ws.id} active={weather===ws.id} color="#4A9EFF"
+            title={ws.desc} onClick={()=>onWeather(ws.id)}>
+            {ws.label}{ws.mult!==1?<span style={{color:T.blue, marginLeft:3}}>{ws.mult}×</span>:""}
+          </Pill>
+        ))}
+      </div>
+
+      {/* Planned events */}
+      <div style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap" }}>
+        <Lbl>Events</Lbl>
+        {Object.entries(EVENT_MAP).map(([eid, m]) => {
+          const on = events.includes(eid);
+          return (
+            <Pill key={eid} active={on} color={m.isHighRisk ? T.red : T.purple}
+              title={`Closure: ${Math.round(m.closureProb*100)}% · +${Math.round(m.mult*100)}% demand · ${m.windows.join(", ")}`}
+              onClick={()=>onEvent(eid)}>
+              {m.label}{m.isHighRisk?<span style={{color:T.red, marginLeft:3}}>⚠</span>:""}
+            </Pill>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NORTH STAR STRIP
+// ─────────────────────────────────────────────────────────────────────────────
+function NorthStarStrip() {
+  const cur  = Math.round(NORTH_STAR.baseline * 100);
+  const p3   = Math.round(NORTH_STAR.phase3Gate * 100);
+  const ann  = Math.round(NORTH_STAR.target12m * 100);
+  const barW = 200;
+  return (
+    <div style={{ background:"rgba(74,158,255,0.04)", borderBottom:`1px solid ${T.border}`,
+      padding:"6px 20px", display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+      <span style={{ color:T.textDim, fontSize:11, letterSpacing:2, textTransform:"uppercase" }}>North Star ↗</span>
+      <span style={{ color:T.textMid, fontSize:11 }}>Planned Event Coverage Rate</span>
+      {/* Bar */}
+      <div style={{ position:"relative", width:barW, height:6, background:T.border, borderRadius:3 }}>
+        {/* Phase 3 gate marker */}
+        <div style={{ position:"absolute", top:0, bottom:0, width:1, background:T.amber, left:`${p3}%` }} title={`Phase 3: ${p3}%`} />
+        {/* Annual target marker */}
+        <div style={{ position:"absolute", top:0, bottom:0, width:1, background:T.green, left:`${ann}%` }} title={`12m: ${ann}%`} />
+        {/* Fill */}
+        <div style={{ height:"100%", borderRadius:3, background:T.blue, width:`${Math.min(cur,100)}%`, transition:"width .3s" }} />
+      </div>
+      <span style={{ color:T.blue, fontWeight:"bold", fontSize:13 }}>{cur}%</span>
+      <span style={{ color:T.textDim, fontSize:11 }}>
+        Phase 3 gate: <span style={{color:T.amber}}>{p3}%</span> ·{" "}
+        12m target: <span style={{color:T.green}}>{ann}%</span>
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// READINESS HEADER — the signature element: live SVG readiness ring
+// ─────────────────────────────────────────────────────────────────────────────
+function ReadinessHeader({ readiness, ast, totAlloc, reserve, ringOffset, RING_R, RING_STROKE, RING_CIRC }) {
+  const { score, status, label, color, rule1, required, allocated, shortfall, surplus } = readiness;
+  const ringSize = (RING_R + RING_STROKE) * 2 + 8;
+  return (
+    <div style={{ background:ast.bg, borderBottom:`1px solid ${ast.border}`, padding:"12px 20px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
+
+        {/* SVG Ring — the signature element */}
+        <div style={{ position:"relative", width:ringSize, height:ringSize, flexShrink:0 }}>
+          <svg width={ringSize} height={ringSize} style={{ transform:"rotate(-90deg)" }}>
+            {/* Track */}
+            <circle cx={ringSize/2} cy={ringSize/2} r={RING_R}
+              fill="none" stroke={T.border} strokeWidth={RING_STROKE} />
+            {/* Arc */}
+            <circle cx={ringSize/2} cy={ringSize/2} r={RING_R}
+              fill="none" stroke={color} strokeWidth={RING_STROKE}
+              strokeDasharray={RING_CIRC} strokeDashoffset={ringOffset}
+              strokeLinecap="round"
+              style={{ transition:"stroke-dashoffset .35s cubic-bezier(.4,0,.2,1), stroke .35s" }} />
+          </svg>
+          {/* Score label inside ring */}
+          <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
+            alignItems:"center", justifyContent:"center" }}>
+            <span style={{ color, fontSize:20, fontWeight:"bold", lineHeight:1 }}>{score}</span>
+            <span style={{ color:T.textDim, fontSize:9, letterSpacing:1, textTransform:"uppercase", marginTop:2 }}>rdns</span>
+          </div>
+        </div>
+
+        {/* Status label + rule1 */}
+        <div style={{ borderLeft:`2px solid ${ast.border}`, paddingLeft:16 }}>
+          <div style={{ color, fontSize:18, fontWeight:"bold", letterSpacing:2, textTransform:"uppercase" }}>
+            {label}
+          </div>
+          {rule1 && (
+            <div style={{ background:"rgba(255,59,48,0.15)", border:`1px solid ${T.red}`,
+              borderRadius:4, padding:"4px 10px", marginTop:6, fontSize:11, color:"#ff8080" }}>
+              <span style={{color:T.red, fontWeight:"bold"}}>RULE 1 OVERRIDE · </span>
+              {rule1.eventId?.replace(/_/g," ")} active — shortfall {rule1.shortfall} units &gt; threshold 5. Status locked.
+            </div>
+          )}
+        </div>
+
+        {/* Fleet stats */}
+        <div style={{ marginLeft:"auto", display:"flex", gap:24 }}>
+          {[
+            ["Required",  required,                    T.textMid ],
+            ["Allocated", allocated,                   T.text    ],
+            shortfall>0 ? ["Shortfall", `-${shortfall}`, T.red ] : null,
+            surplus>0   ? ["Surplus",   `+${surplus}`,   T.green] : null,
+            ["Outpost / 50", `${totAlloc}`, T.textMid],
+            ["Reserve",  reserve, reserve<5 ? T.amber : T.textMid],
+          ].filter(Boolean).map(([lbl, val, clr]) => (
+            <div key={lbl} style={{ textAlign:"right" }}>
+              <div style={{ color:clr, fontSize:16, fontWeight:"bold", fontVariantNumeric:"tabular-nums" }}>{val}</div>
+              <div style={{ color:T.textDim, fontSize:10, letterSpacing:1, textTransform:"uppercase", marginTop:1 }}>{lbl}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Score bar */}
+      <div style={{ marginTop:8, height:2, background:T.border, borderRadius:1, overflow:"hidden" }}>
+        <div style={{ height:"100%", background:color, width:`${score}%`, borderRadius:1, transition:"width .35s" }} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 1 — SITUATION AWARENESS
+// ─────────────────────────────────────────────────────────────────────────────
+function SituationTab({ surface, events, windowId, onSwitch }) {
+  const corridors = Object.values(CORRIDORS).sort((a,b)=>a.tier-b.tier);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+
+      {/* Data quality warning */}
+      <div style={{ background:"rgba(255,149,0,0.08)", border:`1px solid rgba(255,149,0,0.3)`,
+        borderRadius:6, padding:"8px 14px", fontSize:11, color:"#ffc966", display:"flex", gap:8 }}>
+        <span style={{color:T.amber}}>⚠</span>
+        <span>
+          <span style={{fontWeight:"bold", color:T.amber}}>Phase 2 Data Gate: </span>
+          Junction field {fmtPct(DATA_QUALITY.junction.rate)} complete (target ≥85%). Corridor rankings are
+          directionally correct but may shift. Reason Breakdown {fmtPct(DATA_QUALITY.reasonBreakdown.rate)} (target ≥80%) — root-cause analysis not yet reliable.
+        </span>
+      </div>
+
+      {/* Demand heatmap */}
+      <Section title="Demand Surface" sub="Expected incidents per corridor × shift window — all active modifiers applied">
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign:"left", color:T.textDim, padding:"6px 10px", fontSize:10,
+                  letterSpacing:1.5, textTransform:"uppercase", borderBottom:`1px solid ${T.border}` }}>
+                  Corridor
+                </th>
+                {WINDOW_ORDER.map(wid => {
+                  const w = SHIFT_WINDOWS[wid];
+                  const isActive = wid===windowId;
+                  const evts = events.filter(e => EVENT_MAP[e]?.windows.includes(wid));
+                  return (
+                    <th key={wid} style={{ textAlign:"center", padding:"6px 8px",
+                      borderBottom: `2px solid ${isActive ? T.blue : T.border}`,
+                      color: isActive ? T.blue : T.textDim, fontSize:11 }}>
+                      <div>{w.shortLabel}</div>
+                      <div style={{ color:T.textDim, fontWeight:"normal", fontSize:10 }}>{w.hours}</div>
+                      {evts.length>0 && (
+                        <div style={{ fontSize:10, color: evts.some(e=>EVENT_MAP[e]?.isHighRisk) ? T.red : T.purple, marginTop:2 }}>
+                          {evts.some(e=>EVENT_MAP[e]?.isHighRisk)?"⚠":"◇"} event
+                        </div>
+                      )}
+                      {w.isDead && <div style={{ fontSize:10, color:T.textDim, marginTop:2 }}>dead zone</div>}
+                    </th>
+                  );
+                })}
+                <th style={{ textAlign:"right", color:T.textDim, padding:"6px 10px", fontSize:10,
+                  letterSpacing:1, borderBottom:`1px solid ${T.border}` }}>Tier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {corridors.map(c => (
+                <tr key={c.id} style={{ borderBottom:`1px solid rgba(255,255,255,0.03)` }}>
+                  <td style={{ padding:"6px 10px" }}>
+                    <div style={{ color:TIER_COLOR[c.tier], fontWeight:"bold", fontSize:12 }}>{c.name}</div>
+                    <div style={{ color:T.textDim, fontSize:10 }}>{c.events} events</div>
+                  </td>
+                  {WINDOW_ORDER.map(wid => {
+                    const v = surface[c.id]?.[wid] ?? 0;
+                    const lvl = getDemandLevel(v);
+                    const ist = INTENSITY_STYLE[lvl];
+                    const isActive = wid===windowId;
+                    return (
+                      <td key={wid} style={{ textAlign:"center", padding:"4px 6px",
+                        outline: isActive ? `1px solid rgba(74,158,255,0.3)` : "none" }}>
+                        <div style={{ background:ist.bg, color:ist.text, borderRadius:3,
+                          padding:"3px 6px", fontSize:11, fontVariantNumeric:"tabular-nums" }}>
+                          {v>0 ? v.toFixed(1) : "—"}
+                        </div>
+                      </td>
+                    );
+                  })}
+                  <td style={{ textAlign:"right", padding:"6px 10px" }}>
+                    <span style={{ border:`1px solid ${TIER_COLOR[c.tier]}`, borderRadius:3,
+                      padding:"2px 5px", fontSize:10, color:TIER_COLOR[c.tier] }}>T{c.tier}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* Legend */}
+          <div style={{ display:"flex", gap:10, marginTop:10, alignItems:"center" }}>
+            <span style={{ color:T.textDim, fontSize:10, letterSpacing:1, textTransform:"uppercase" }}>Intensity:</span>
+            {Object.entries(INTENSITY_STYLE).map(([lvl, s]) => (
+              <span key={lvl} style={{ background:s.bg, color:s.text, fontSize:10,
+                padding:"2px 8px", borderRadius:3, border:`1px solid ${s.text}22` }}>{lvl}</span>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* Active event overlays */}
+      {events.length>0 && (
+        <Section title="Active Event Overlays" sub="Calibrated to actual event timing data — not uniformly applied">
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {events.map(eid => {
+              const m = EVENT_MAP[eid];
+              if (!m) return null;
+              return (
+                <div key={eid} style={{
+                  border:`1px solid ${m.isHighRisk ? "rgba(255,59,48,0.4)" : "rgba(191,90,242,0.3)"}`,
+                  borderRadius:6, padding:"10px 14px",
+                  background: m.isHighRisk ? "rgba(255,59,48,0.08)" : "rgba(191,90,242,0.06)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ fontWeight:"bold", color: m.isHighRisk ? T.red : T.purple }}>{m.label}</span>
+                    {m.isHighRisk && <span style={{ color:T.red, fontSize:11 }}>⚠ High Risk · closure prob {fmtPct(m.closureProb)}</span>}
+                  </div>
+                  <div style={{ display:"flex", gap:16, marginTop:4, fontSize:11, color:T.textMid }}>
+                    <span>Affects: <span style={{color:T.text}}>{m.windows.map(w=>SHIFT_WINDOWS[w]?.shortLabel).join(", ")}</span></span>
+                    <span>Closure: <span style={{color:m.isHighRisk?T.red:T.text}}>{fmtPct(m.closureProb)}</span></span>
+                    <span>Demand uplift: <span style={{color:T.text}}>+{fmtPct(m.mult)}</span></span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Corridor tier cards */}
+      <Section title="Corridor Risk Tiers" sub="Tier 1 static outpost mandate is ironclad — data from 8,173 records">
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(220px,1fr))", gap:10 }}>
+          {corridors.map(c => (
+            <div key={c.id} style={{ border:`1px solid ${TIER_COLOR[c.tier]}44`, borderRadius:6,
+              padding:"10px 14px", background:T.panel }}>
+              <div style={{ color:TIER_COLOR[c.tier], fontWeight:"bold", fontSize:13 }}>{c.name}</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:3, marginTop:6, fontSize:11, color:T.textMid }}>
+                <span>{c.events} events · {c.closures} closures</span>
+                <span>Closure rate: <span style={{color:c.closureRate>0.08?T.amber:T.textMid}}>{fmtPct(c.closureRate)}</span></span>
+                <span>Demand mult: <span style={{color:T.textMid}}>{c.mult}×</span></span>
+                {c.staging && <span style={{color:T.textDim, borderTop:`1px solid ${T.border}`, marginTop:4, paddingTop:4}}>Stage: {c.staging}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Switch CTA */}
+      <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:14 }}>
+        <button onClick={onSwitch}
+          style={{ background:"rgba(74,158,255,0.15)", border:`1px solid ${T.blue}`,
+            color:T.blue, padding:"8px 18px", borderRadius:4, cursor:"pointer",
+            fontSize:12, fontFamily:"inherit", letterSpacing:1 }}>
+          → Open Deployment Planner
+        </button>
+        <span style={{ marginLeft:12, color:T.textDim, fontSize:11 }}>Allocate resources for the selected shift</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 2 — DEPLOYMENT PLANNER
+// ─────────────────────────────────────────────────────────────────────────────
+function DeploymentTab({ windowId, presc, alloc, comp, readiness, ast, totAlloc, reserve,
+  logCheck, lastLog, onAlloc, onFinalise }) {
+  const w = SHIFT_WINDOWS[windowId];
+  const totalPresc = LOC_ORDER.reduce((s,l)=>s+RT_ORDER.reduce((ss,rt)=>ss+(presc[l]?.[rt]??0),0),0);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+      {/* Shift context reminder */}
+      <div style={{ border:`1px solid ${T.blue}44`, borderRadius:4, padding:"8px 14px",
+        background:"rgba(74,158,255,0.05)", display:"flex", flexWrap:"wrap", gap:16, fontSize:11, color:T.textMid }}>
+        <span style={{ color:T.blue, fontWeight:"bold" }}>{w?.label}</span>
+        <span>{w?.hours}</span>
+        <span>~{w?.avgEventsPerDay} events/day avg</span>
+        <span>Risk weight: {w?.riskWeight}</span>
+        {w?.isDead && <span style={{color:T.textDim}}>DEAD ZONE — reallocate freed units to Dawn or Night</span>}
+      </div>
+
+      {/* Fleet bar */}
+      <FleetBar totalPresc={totalPresc} totAlloc={totAlloc} reserve={reserve} logCheck={logCheck} />
+
+      {/* Location cards */}
+      {LOC_ORDER.map(loc => (
+        <LocationCard key={loc} loc={loc} presc={presc} alloc={alloc} comp={comp} onAlloc={onAlloc} />
+      ))}
+
+      {/* Reserve pool */}
+      <div style={{ border:`1px solid ${reserve<5 ? T.amber+"44" : T.border}`, borderRadius:6,
+        padding:"10px 16px", background:T.panel, display:"flex", justifyContent:"space-between",
+        alignItems:"center", fontSize:12 }}>
+        <div>
+          <span style={{color:T.text, fontWeight:"bold"}}>Mobile Reserve Pool</span>
+          <span style={{color:T.textDim, marginLeft:8}}>— unassigned units for rapid response</span>
+        </div>
+        <div style={{ display:"flex", gap:20, alignItems:"center" }}>
+          <span style={{color:T.textMid}}>Outposts: <span style={{color:T.text}}>{totAlloc}</span></span>
+          <span style={{color:reserve<5?T.amber:T.text, fontWeight:"bold", fontSize:15}}>{reserve} in reserve</span>
+          {reserve<5 && <span style={{color:T.amber, fontSize:11}}>⚠ Low reserve</span>}
+        </div>
+      </div>
+
+      {/* Finalise section */}
+      <FinaliseSection readiness={readiness} ast={ast} logCheck={logCheck} lastLog={lastLog} onFinalise={onFinalise} />
+    </div>
+  );
+}
+
+function FleetBar({ totalPresc, totAlloc, reserve, logCheck }) {
+  const prescPct = Math.min((totalPresc/TOTAL_FLEET)*100, 100);
+  const allocPct = Math.min((totAlloc/TOTAL_FLEET)*100, 100);
+  return (
+    <div style={{ border:`1px solid ${T.border}`, borderRadius:6, padding:"12px 16px", background:T.panel }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:T.textMid, marginBottom:8 }}>
+        <span style={{letterSpacing:1, textTransform:"uppercase"}}>Fleet Allocation</span>
+        <div style={{ display:"flex", gap:20 }}>
+          <span>Prescribed: <span style={{color:T.text}}>{totalPresc}</span></span>
+          <span>Allocated: <span style={{color:T.text}}>{totAlloc}</span></span>
+          <span>Reserve: <span style={{color:reserve<5?T.amber:T.text}}>{reserve}</span></span>
+          <span style={{color:T.textDim}}>/ {TOTAL_FLEET} total</span>
+        </div>
+      </div>
+      <div style={{ position:"relative", height:8, background:T.border, borderRadius:4, overflow:"hidden" }}>
+        {/* Prescribed ghost */}
+        <div style={{ position:"absolute", top:0, left:0, height:"100%", background:T.borderHi,
+          borderRadius:4, width:`${prescPct}%` }} />
+        {/* Actual allocated */}
+        <div style={{ position:"absolute", top:0, left:0, height:"100%", background:T.blue,
+          borderRadius:4, width:`${allocPct}%`, transition:"width .2s" }} />
+      </div>
+      {logCheck.should && (
+        <div style={{ fontSize:11, color:T.amber, marginTop:6 }}>
+          ⚠ Deviation log will be required at finalisation — {logCheck.reasons.length} issue{logCheck.reasons.length!==1?"s":""} detected.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocationCard({ loc, presc, alloc, comp, onAlloc }) {
+  const meta   = LOC_META[loc];
+  const totals = comp[loc]?._t;
+  const short  = totals ? Math.max(0, -(totals.gap)) : 0;
+  const sev    = totals?.sev ?? "ok";
+  const borderC = sev==="red" ? T.red+"55" : sev==="amber" ? T.amber+"44" : T.border;
+  const headerBg= sev==="red" ? "rgba(255,59,48,0.08)" : sev==="amber" ? "rgba(255,149,0,0.06)" : T.panel;
+
+  return (
+    <div style={{ border:`1px solid ${borderC}`, borderRadius:8, overflow:"hidden" }}>
+      {/* Card header */}
+      <div style={{ background:headerBg, padding:"8px 16px", display:"flex",
+        alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontWeight:"bold", fontSize:14, color:T.text }}>{meta.label}</span>
+          <span style={{ color:TIER_COLOR[meta.tier], fontSize:11,
+            border:`1px solid ${TIER_COLOR[meta.tier]}55`, borderRadius:3, padding:"1px 5px" }}>T{meta.tier}</span>
+          <span style={{ color:T.textDim, fontSize:11 }}>{meta.note}</span>
+        </div>
+        <div style={{ display:"flex", gap:16, fontSize:11 }}>
+          <span style={{color:T.textMid}}>Prescribed: <span style={{color:T.text}}>{totals?.prescribed??0}</span></span>
+          <span style={{color:T.textMid}}>Allocated: <span style={{color:T.text, fontWeight:"bold"}}>{totals?.allocated??0}</span></span>
+          {short>0 && <span style={{color:T.red, fontWeight:"bold"}}>Gap: -{short}</span>}
+        </div>
+      </div>
+      {/* Rows */}
+      <div>
+        {RT_ORDER.map(rt => (
+          <AllocRow key={rt} loc={loc} rt={rt} presc={presc} alloc={alloc} comp={comp} onAlloc={onAlloc} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AllocRow({ loc, rt, presc, alloc, comp, onAlloc }) {
+  const prescribed = presc[loc]?.[rt] ?? 0;
+  const allocated  = alloc[loc]?.[rt] ?? 0;
+  const cell       = comp[loc]?.[rt];
+  const gap        = cell?.gap ?? 0;
+  const sev        = cell?.sev ?? "ok";
+  const flagged    = cell?.flagged ?? false;
+  const rtc        = RTCOLOR[rt];
+  const maxSlider  = Math.max(prescribed*2, 15);
+  const gapColor   = sev==="red"?T.red : sev==="amber"?T.amber : T.textDim;
+
+  return (
+    <div style={{ padding:"8px 16px", borderTop:`1px solid ${T.border}22`,
+      display:"flex", alignItems:"center", gap:12,
+      background: sev==="red" ? "rgba(255,59,48,0.04)" : "transparent" }}>
+
+      {/* Resource label */}
+      <div style={{ width:110, flexShrink:0, color:rtc.text, fontSize:11, fontWeight:"bold" }}>
+        {RESOURCE_TYPES[rt]?.short}
+      </div>
+
+      {/* Slider track with prescription marker */}
+      <div style={{ flex:1, position:"relative", paddingTop:2, paddingBottom:2 }}>
+        {/* Prescription marker */}
+        <div style={{ position:"absolute", top:0, bottom:0, width:1,
+          background:T.textDim+"80", pointerEvents:"none",
+          left:`${Math.min((prescribed/maxSlider)*100,100)}%` }}
+          title={`Prescribed: ${prescribed}`} />
+        <input type="range" min={0} max={maxSlider} step={1} value={allocated}
+          onChange={e => onAlloc(loc, rt, Number(e.target.value))}
+          style={{ width:"100%", accentColor:rtc.text, height:6, cursor:"pointer" }} />
+      </div>
+
+      {/* Allocated value */}
+      <div style={{ width:28, textAlign:"center", color:rtc.text, fontWeight:"bold",
+        fontSize:15, fontVariantNumeric:"tabular-nums" }}>
+        {allocated}
+      </div>
+
+      {/* Prescribed reference */}
+      <div style={{ width:100, textAlign:"right", fontSize:11, color:T.textDim }}>
+        Prescribed: <span style={{color:T.textMid}}>{prescribed}</span>
+      </div>
+
+      {/* Gap */}
+      <div style={{ width:70, textAlign:"right", fontSize:11, color:gapColor, fontVariantNumeric:"tabular-nums",
+        fontWeight: sev==="red" ? "bold" : "normal" }}>
+        {fmtGap(gap)}
+        {flagged && <span style={{color:T.amber, marginLeft:3}} title="Deviation >20%">!</span>}
+      </div>
+    </div>
+  );
+}
+
+function FinaliseSection({ readiness, ast, logCheck, lastLog, onFinalise }) {
+  const { score, status } = readiness;
+  const msg = {
+    OPTIMAL:     "✓ Deployment looks good for this window.",
+    ADVISORY:    "→ Minor gaps present — review before finalising.",
+    WARNING:     "⚠ Significant shortfalls — consider adjusting allocations.",
+    CRITICAL_GAP:"⛔ Critical gap — do not finalise without addressing shortfalls.",
+  }[status];
+
+  return (
+    <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:16, display:"flex", flexDirection:"column", gap:10 }}>
+      {/* Status summary */}
+      <div style={{ border:`1px solid ${ast.border}`, borderRadius:6, padding:"10px 16px",
+        background:ast.bg, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span style={{ color:ast.text, fontSize:13 }}>{msg}</span>
+        <span style={{ color:ast.text, fontSize:22, fontWeight:"bold", fontVariantNumeric:"tabular-nums" }}>{score}%</span>
+      </div>
+
+      {/* Deviation warning */}
+      {logCheck.should && (
+        <div style={{ border:`1px solid ${T.amber}44`, borderRadius:4, padding:"8px 14px",
+          background:"rgba(255,149,0,0.07)", fontSize:11, color:T.amber }}>
+          ⚠ {logCheck.reasons.length} deviation{logCheck.reasons.length!==1?"s":""} detected.
+          A deviation log is required before this plan can be finalised.
+          This creates institutional memory and future ML training data.
+        </div>
+      )}
+
+      {/* Finalise button */}
+      <button onClick={onFinalise}
+        style={{ padding:"12px 0", borderRadius:6, border:`1px solid ${logCheck.should?T.amber:T.blue}`,
+          background: logCheck.should ? "rgba(255,149,0,0.15)" : "rgba(74,158,255,0.15)",
+          color: logCheck.should ? T.amber : T.blue, fontSize:13, fontFamily:"inherit",
+          fontWeight:"bold", letterSpacing:1.5, cursor:"pointer", textTransform:"uppercase", transition:"background .15s" }}>
+        {logCheck.should ? "Finalise → Deviation Log Required" : "✓  Finalise Shift Plan"}
+      </button>
+
+      {/* Last log confirmation */}
+      {lastLog && (
+        <div style={{ border:`1px solid ${T.green}44`, borderRadius:4, padding:"7px 14px",
+          background:"rgba(52,199,89,0.06)", fontSize:11, color:T.green }}>
+          ✓ Plan finalised at {lastLog.ts?.slice(11,19)}
+          {lastLog.deviationReason && ` — Reason: ${lastLog.deviationReason}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4 — FEEDBACK LOGGER MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function FeedbackModal({ logCheck, comp, readiness, presc, alloc, onSubmit, onCancel }) {
+  const [reason, setReason] = useState(null);
+  const [note,   setNote]   = useState("");
+  const [noteErr, setNoteErr] = useState("");
+  const [reasonErr, setReasonErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  const deviations = logCheck.reasons.filter(r=>r.type==="DEVIATION");
+  const rule1      = logCheck.reasons.find(r=>r.type==="HIGH_RISK_SHORTFALL");
+  const canCancel  = !rule1;
+
+  const handleSubmit = () => {
+    if (!reason) { setReasonErr("A deviation reason is required before this plan can be finalised."); return; }
+    setReasonErr("");
+    if (note.length>200) { setNoteErr("Note must be 200 characters or fewer."); return; }
+    setDone(true);
+    setTimeout(() => onSubmit({ reason, note }), 350);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.85)",
+      backdropFilter:"blur(4px)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ width:"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto",
+        background:T.panel, border:`1px solid ${T.red}`, borderRadius:10,
+        boxShadow:`0 0 40px rgba(255,59,48,0.2)` }}>
+
+        {/* Modal header */}
+        <div style={{ background:"rgba(255,59,48,0.12)", borderBottom:`1px solid rgba(255,59,48,0.3)`,
+          padding:"14px 20px", borderRadius:"10px 10px 0 0", display:"flex", justifyContent:"space-between" }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+              <span style={{color:T.red, fontSize:16}}>⚠</span>
+              <span style={{ color:"#ff8080", fontWeight:"bold", letterSpacing:1.5, textTransform:"uppercase" }}>
+                Deviation Log Required
+              </span>
+            </div>
+            <p style={{ color:"rgba(255,180,180,0.75)", fontSize:12, lineHeight:1.5, maxWidth:480 }}>
+              {rule1
+                ? "A high-risk planned event is active with a critical shortfall. This log is mandatory and cannot be dismissed."
+                : `${deviations.length} allocation row${deviations.length!==1?"s deviate":" deviates"} >20% from prescription. Document your reasoning.`}
+            </p>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ color:T.red, fontSize:24, fontWeight:"bold" }}>{readiness.score}</div>
+            <div style={{ color:"rgba(255,59,48,0.6)", fontSize:10, textTransform:"uppercase", letterSpacing:1 }}>rdns</div>
+          </div>
+        </div>
+
+        <div style={{ padding:"20px", display:"flex", flexDirection:"column", gap:16 }}>
+
+          {/* Deviation table */}
+          {deviations.length>0 && (
+            <div>
+              <div style={{ fontSize:10, color:T.textDim, letterSpacing:1.5,
+                textTransform:"uppercase", marginBottom:6 }}>Allocation Deviations</div>
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:4, overflow:"hidden" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr",
+                  background:T.surface, padding:"6px 12px",
+                  fontSize:10, color:T.textDim, textTransform:"uppercase", letterSpacing:1 }}>
+                  <span>Resource</span><span style={{textAlign:"right"}}>Prescribed</span>
+                  <span style={{textAlign:"right"}}>Allocated</span><span style={{textAlign:"right"}}>Gap</span>
+                </div>
+                {deviations.map((r,i) => {
+                  const cell = comp[r.loc]?.[r.rt];
+                  if (!cell) return null;
+                  return (
+                    <div key={i} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr",
+                      padding:"8px 12px", borderTop:`1px solid ${T.border}11`, fontSize:12,
+                      background: cell.gap<0 ? "rgba(255,59,48,0.06)" : T.panel }}>
+                      <span style={{color:T.text}}>
+                        <span style={{color:T.textDim}}>{r.loc?.replace(/_/g," ")} · </span>{r.rt}
+                      </span>
+                      <span style={{textAlign:"right",color:T.textMid}}>{cell.prescribed}</span>
+                      <span style={{textAlign:"right",color:T.text,fontWeight:"bold"}}>{cell.allocated}</span>
+                      <span style={{textAlign:"right",fontWeight:"bold",
+                        color:cell.gap<0?T.red:cell.gap>0?T.amber:T.textDim}}>
+                        {fmtGap(cell.gap)} <span style={{fontSize:10,fontWeight:"normal",color:T.textDim}}>({fmtPct(cell.devPct)})</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rule 1 callout */}
+          {rule1 && (
+            <div style={{ border:`1px solid rgba(255,59,48,0.4)`, borderRadius:6,
+              padding:"12px 16px", background:"rgba(255,59,48,0.1)" }}>
+              <div style={{ display:"flex", gap:10 }}>
+                <span style={{color:T.red, fontSize:18}}>⚡</span>
+                <div>
+                  <div style={{color:"#ff8080", fontWeight:"bold", fontSize:12, marginBottom:4}}>Rule 1 Override — Critical Event Shortfall</div>
+                  <p style={{ fontSize:12, color:"rgba(255,180,180,0.75)", lineHeight:1.6 }}>
+                    <strong style={{color:"#ff8080"}}>{rule1.eventId?.replace(/_/g," ")}</strong> is active with{" "}
+                    {fmtPct(rule1.closureProb)} road closure probability. Shortfall of{" "}
+                    <strong style={{color:T.red}}>{rule1.shortfall} units</strong> exceeds threshold of 5.
+                    Alert Status locked to <strong style={{color:T.red}}>CRITICAL GAP</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reason selector */}
+          <div>
+            <div style={{ fontSize:10, color:T.textDim, letterSpacing:1.5,
+              textTransform:"uppercase", marginBottom:8 }}>
+              Why are you deviating? <span style={{color:T.red}}>*</span>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+              {DEVIATION_REASONS.map(dr => {
+                const sel = reason===dr.id;
+                return (
+                  <button key={dr.id} onClick={()=>setReason(dr.id)}
+                    style={{ textAlign:"left", padding:"10px 12px", borderRadius:5, cursor:"pointer",
+                      border:`1px solid ${sel ? T.blue : T.border}`,
+                      background: sel ? "rgba(74,158,255,0.15)" : T.surface,
+                      fontFamily:"inherit", transition:"all .1s" }}>
+                    <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                      <span style={{ flexShrink:0, marginTop:2, width:12, height:12,
+                        borderRadius:"50%", border:`2px solid ${sel?T.blue:T.borderHi}`,
+                        background: sel ? T.blue : "transparent", display:"flex",
+                        alignItems:"center", justifyContent:"center" }}>
+                        {sel && <span style={{ width:4, height:4, borderRadius:"50%", background:T.surface, display:"block" }} />}
+                      </span>
+                      <div>
+                        <div style={{ color: sel ? T.blue : T.text, fontWeight:"bold", fontSize:12 }}>{dr.label}</div>
+                        <div style={{ color:T.textDim, fontSize:11, marginTop:2 }}>{dr.desc}</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {reasonErr && <p style={{color:T.red, fontSize:11, marginTop:6}}>⚠ {reasonErr}</p>}
+          </div>
+
+          {/* Note field */}
+          <div>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+              <span style={{ fontSize:10, color:T.textDim, letterSpacing:1.5, textTransform:"uppercase" }}>
+                Note {reason==="OTHER" ? <span style={{color:T.red}}>* required</span> : <span style={{color:T.textDim}}>(optional)</span>}
+              </span>
+              <span style={{ fontSize:11, color: (200-note.length)<20?T.amber:T.textDim }}>
+                {200-note.length} chars remaining
+              </span>
+            </div>
+            <textarea value={note} onChange={e=>{setNote(e.target.value);if(e.target.value.length<=200)setNoteErr("");}}
+              placeholder="e.g. Strike march expected on Bellary Road — local intel from station"
+              rows={3} maxLength={210}
+              style={{ width:"100%", boxSizing:"border-box", background:T.surface, color:T.text,
+                border:`1px solid ${noteErr?T.red:T.border}`, borderRadius:4, padding:"8px 12px",
+                resize:"vertical", fontFamily:"inherit", fontSize:12, outline:"none" }} />
+            {noteErr && <p style={{color:T.red, fontSize:11, marginTop:4}}>⚠ {noteErr}</p>}
+          </div>
+
+          {/* Auto-captured fields disclosure */}
+          <AutoCapturedDisclosure readiness={readiness} presc={presc} alloc={alloc} />
+
+          {/* Action buttons */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+            paddingTop:8, borderTop:`1px solid ${T.border}` }}>
+            <div>
+              {canCancel ? (
+                <button onClick={onCancel}
+                  style={{ padding:"8px 16px", borderRadius:4, border:`1px solid ${T.border}`,
+                    background:"transparent", color:T.textDim, cursor:"pointer",
+                    fontFamily:"inherit", fontSize:12 }}>
+                  Go Back (unsaved)
+                </button>
+              ) : (
+                <p style={{ fontSize:11, color:"rgba(255,59,48,0.7)", fontStyle:"italic", maxWidth:260 }}>
+                  This log cannot be dismissed — high-risk event requires documentation.
+                </p>
+              )}
+            </div>
+            <button onClick={handleSubmit} disabled={done}
+              style={{ padding:"10px 24px", borderRadius:4, fontFamily:"inherit", fontWeight:"bold",
+                letterSpacing:1.5, fontSize:12, cursor:done?"not-allowed":"pointer", textTransform:"uppercase",
+                border:`1px solid ${done?T.green:reason?T.blue:T.border}`,
+                background: done?"rgba(52,199,89,0.15)":reason?"rgba(74,158,255,0.15)":"transparent",
+                color: done?T.green:reason?T.blue:T.textDim, transition:"all .15s" }}>
+              {done ? "✓  Logged & Finalised" : "Confirm & Finalise Plan"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AutoCapturedDisclosure({ readiness, presc, alloc }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ border:`1px solid ${T.border}`, borderRadius:4 }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ width:"100%", display:"flex", justifyContent:"space-between", padding:"8px 12px",
+          background:"transparent", border:"none", cursor:"pointer", color:T.textDim,
+          fontFamily:"inherit", fontSize:11 }}>
+        <span style={{textTransform:"uppercase", letterSpacing:1}}>Auto-captured system fields (no input required)</span>
+        <span>{open?"▲":"▼"}</span>
+      </button>
+      {open && (
+        <div style={{ borderTop:`1px solid ${T.border}`, padding:"12px", fontSize:11,
+          color:T.textMid, display:"flex", flexDirection:"column", gap:8 }}>
+          <p style={{ color:T.textDim, fontStyle:"italic" }}>
+            These fields are recorded automatically. Outcome fields (events handled, closures,
+            resolution times) are populated post-shift from incident data.
+          </p>
+          <div>
+            <span style={{color:T.textDim}}>Readiness at finalisation: </span>
+            <span>{readiness.score} · {readiness.status} · Required: {readiness.required} · Allocated: {readiness.allocated}</span>
+          </div>
+          <div style={{ fontFamily:"monospace", background:T.surface, borderRadius:3, padding:8, fontSize:10 }}>
+            {LOC_ORDER.map(loc => RT_ORDER.map(rt => (
+              <div key={`${loc}-${rt}`} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:8, color:T.textDim, marginBottom:2 }}>
+                <span>{loc}.{rt}</span>
+                <span style={{textAlign:"right", color:T.textMid}}>presc: {presc[loc]?.[rt]??0}</span>
+                <span style={{textAlign:"right", color:T.text}}>actual: {alloc[loc]?.[rt]??0}</span>
+              </div>
+            )))}
+          </div>
+          <div style={{color:T.textDim}}>
+            Outcome fields: <span style={{fontStyle:"italic"}}>events_handled · road_closures · median_resolution_min/corridor</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED PRIMITIVES
+// ─────────────────────────────────────────────────────────────────────────────
+function Lbl({ children }) {
+  return <span style={{ fontSize:10, color:T.textDim, letterSpacing:1.5,
+    textTransform:"uppercase", flexShrink:0 }}>{children}</span>;
+}
+
+function Pill({ active, dead, color, title, onClick, children }) {
+  return (
+    <button onClick={onClick} title={title}
+      style={{ padding:"3px 9px", borderRadius:3, border:`1px solid ${active?color:T.border}`,
+        background: active ? `${color}22` : T.surface,
+        color: active ? color : dead ? T.textDim : T.textMid,
+        cursor:"pointer", fontSize:11, fontFamily:"inherit", transition:"all .1s",
+        opacity: dead&&!active ? 0.55 : 1 }}>
+      {children}
+    </button>
+  );
+}
+
+function Section({ title, sub, children }) {
+  return (
+    <div>
+      <div style={{ marginBottom:12 }}>
+        <h2 style={{ margin:0, fontSize:12, fontWeight:"bold", color:T.textMid,
+          textTransform:"uppercase", letterSpacing:2 }}>{title}</h2>
+        {sub && <p style={{ margin:"3px 0 0", fontSize:11, color:T.textDim }}>{sub}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}

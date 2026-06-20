@@ -1,0 +1,82 @@
+**IT CHANGE REQUEST**
+
+Phase 2: Field App Data Governance Enforcement
+
+ASTRAM Traffic Management System  —  Mobile Application & Admin Portal
+
+| **Ticket ID:** | **ASTRAM-IT-2024-PHASE2** | **Priority:** | **P1 — CRITICAL / BLOCKING** |
+| --- | --- | --- | --- |
+| **Raised by:** | Commissioner of Traffic / Astram Product Team | **Target:** | **Day 60 from Phase 1 memo date** |
+| **System affected:** | ASTRAM Mobile App (iOS + Android) | **Gate metric:** | **Junction ≥85%  │  Reason Breakdown ≥80%** |
+
+**1.  ****PROBLEM STATEMENT**
+
+The ASTRAM incident database contains 8,173 records collected between November 2023 and April 2024. A field completeness audit reveals that three fields critical to spatial demand modelling are either structurally empty or contain unprocessable free-text data. The consequence is that the Phase 4 Command Decision Engine cannot be built on reliable data: the junction-level hotspot model, root-cause analysis, and resolved-location feedback loop are all non-functional.
+
+This is not an officer negligence problem. It is a UI design problem. Officers rushing to close incidents in the field will always skip optional fields. The solution is to make these fields non-optional at the point of closure.
+
+| **Field Name** | **Current Fill** | **Phase 2 Target** | **Status** |
+| --- | --- | --- | --- |
+| **junction** | **30.7%  (2,510 / 8,173)** | ≥85% | **CRITICAL GAP** |
+| **reason_breakdown** | **3.4%  (276 / 8,173)** | ≥80% | **UNUSABLE** |
+| **resolved_at_address** | **0.9%  (74 / 8,173)** | Capture all closures | **UNUSABLE** |
+| **priority** | **100.0%  (inflated)** | Correct triage only | **POLICY ISSUE (see SLA doc)** |
+
+**2.  ****CHANGE REQUIREMENTS**
+
+The following changes are mandated. They are listed in priority order. REQ-001 and REQ-002 are blocking — no other Phase 4 work should commence until the field completeness gates in Section 4 are met.
+
+| **ID** | **Priority** | **Change Title** | **Description** | **Owner** | **Target** |
+| --- | --- | --- | --- | --- | --- |
+| **REQ-001** | **P1 CRITICAL** | **Gate the Close button** | Disable the incident closure button until junction, reason_breakdown, and resolved_at_address fields are non-null. Show inline validation error listing missing fields. | Mobile Dev | **Day 30** |
+| **REQ-002** | **P1 CRITICAL** | **Replace reason_breakdown free text with dropdown** | Remove the existing free-text input for reason_breakdown entirely. Replace with a single-select dropdown from the approved enum (see Section 3). | Mobile Dev | **Day 30** |
+| **REQ-003** | **P2 HIGH** | **Auto-populate junction from GPS on closure** | When officer taps Close, pre-populate the junction field from GPS reverse-geocode against the approved junction registry. Officer confirms or overrides. | Mobile Dev + GIS | **Day 45** |
+| **REQ-004** | **P2 HIGH** | **Separate infrastructure backlog queue** | Add a new incident category: BBMP Infrastructure. Events of type Pothole, Water Logging, Road Conditions auto-route to this queue and do not appear in active traffic backlog. | Backend Dev | **Day 45** |
+| **REQ-005** | **P3 NORMAL** | **Block repeat closure without note on same junction within 24h** | If an officer closes an incident at the same junction as a closure in the previous 24 hours, require a mandatory note explaining whether this is a new incident or a recurrence. | Mobile Dev | **Day 60** |
+| **REQ-006** | **P3 NORMAL** | **Add resolved_at_address map pin confirmation** | After marking an incident resolved, require the officer to confirm the resolution GPS pin on a map thumbnail before closure is accepted. | Mobile Dev | **Day 60** |
+
+**3.  ****REASON_BREAKDOWN DROPDOWN — EXACT SPECIFICATION**
+
+The following values constitute the complete approved enum for the reason_breakdown field. No other values may be entered. The dropdown must be single-select. If the officer selects 'Other (specify)', a mandatory 100-character text field appears. This is the only free-text permitted.
+
+| **Dropdown Value** | **Display Description (shown to officer)** |
+| --- | --- |
+| **VEHICLE_BREAKDOWN** | Broken down vehicle — towing required |
+| **ACCIDENT_MINOR** | Minor accident — vehicles can move after exchange |
+| **ACCIDENT_MAJOR** | Major accident — vehicles cannot be moved without crane/tow |
+| **CONSTRUCTION_BLOCKAGE** | Construction site obstructing lane(s) |
+| **POTHOLE_DAMAGE** | Pothole causing lane obstruction or vehicle damage |
+| **WATERLOGGING** | Water logging on road surface — passable with caution |
+| **FLOODING_SEVERE** | Severe flooding — road not passable |
+| **TREE_FALL** | Fallen tree blocking road |
+| **ROAD_DAMAGE** | Road surface damage, sinkhole, or structural failure |
+| **VIP_MOVEMENT** | VIP convoy / security-mandated closure |
+| **PROCESSION_RELIGIOUS** | Religious procession |
+| **PROCESSION_OTHER** | Protest march, political event, or public procession |
+| **PUBLIC_EVENT** | Public gathering or event venue overflow |
+| **CONGESTION_PEAK** | Peak hour congestion — no primary obstruction identified |
+| **SIGNAL_FAILURE** | Traffic signal malfunction |
+| **ABANDONED_VEHICLE** | Unattended / abandoned vehicle |
+| **OTHER (specify)** | Reason not listed above — mandatory 100-character note required |
+
+**4.  ****ACCEPTANCE CRITERIA AND PHASE 2 GATE**
+
+These changes are BLOCKING for Phase 4 construction. The following measurable gates must be achieved before any backend API schema design or demand modelling work commences.
+
+| **Gate** | **Metric** | **Baseline → Target** | **Deadline** |
+| --- | --- | --- | --- |
+| **Phase 2A** | junction field completeness | **30.7% → ≥85%** | **Day 60** |
+| **Phase 2B** | reason_breakdown completeness (dropdown now enforced) | **3.4% → ≥80%** | **Day 60** |
+| **Blocker** | If Phase 2A or 2B not met | **Phase 4 API schema design is HALTED** | **Absolute** |
+
+**5.  ****APPROVAL SIGNATURES**
+
+This ticket requires sign-off from the following stakeholders before development commences. Development may begin only after all three signatures are obtained.
+
+| **Approver** | **Signature** | **Date** | **Status** |
+| --- | --- | --- | --- |
+| **Commissioner of Traffic** | ___________________________ | ____________ | **PENDING** |
+| **Head of IT Systems (BUTA)** | ___________________________ | ____________ | **PENDING** |
+| **Astram Product Lead** | ___________________________ | ____________ | **PENDING** |
+
+*Data source: ASTRAM dataset, 8,173 incidents, Nov 2023–Apr 2024. Field completeness audit prepared by the Astram product team.*

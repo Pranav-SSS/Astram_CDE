@@ -1,0 +1,161 @@
+**GOVERNMENT OF KARNATAKA**
+
+Department of Urban Development  •  Bengaluru Municipal Region
+
+**INTER-AGENCY SERVICE LEVEL AGREEMENT**
+
+Traffic Management Infrastructure Backlog Escalation Protocol
+
+Between: Bengaluru Urban Traffic Authority (BUTA)  and  Bruhat Bengaluru Mahanagara Palike (BBMP)
+
+| **PARTY A — FIRST PARTY** **Bengaluru Urban Traffic Authority** Represented by: Commissioner of Traffic Bangalore City Police Headquarters | **PARTY B — SECOND PARTY** **Bruhat Bengaluru Mahanagara Palike** Represented by: Commissioner, BBMP BBMP Head Office, N.R. Square, Bengaluru |
+| --- | --- |
+
+| SLA Ref: BUTA/BBMP/2024/SLA-001 | Effective: 19 June 2026 | Review: Annually or on mutual request | Version: 1.0 — For signature |
+| --- | --- | --- | --- |
+
+	**RECITALS****	**
+
+WHEREAS, the Bengaluru Urban Traffic Authority (BUTA) operates the ASTRAM traffic incident management system and is responsible for the deployment of traffic management resources across Bengaluru's primary road corridors;
+
+WHEREAS, analysis of 8,173 traffic incidents recorded between November 2023 and April 2024 has identified that 1,007 events (12.3% of all records) represent chronic infrastructure failures — potholes, water logging, road condition deterioration, tree falls, and construction blockages — that fall outside the operational mandate of traffic management and within the infrastructure maintenance mandate of BBMP;
+
+WHEREAS, the continued presence of these infrastructure events in the BUTA active incident queue inflates resolution time statistics, creates alert fatigue among field officers, pollutes demand forecasting models, and incorrectly characterises BUTA's operational performance;
+
+WHEREAS, BBMP has the statutory responsibility and operational capacity to address infrastructure maintenance events on public roads within the Bengaluru Municipal Region;
+
+NOW THEREFORE, the parties agree as follows:
+
+	**1.****	DEFINITIONS**
+
+| **Term** | **Definition** |
+| --- | --- |
+| **Infrastructure Event** | Any incident categorised as: Pothole, Water Logging, Road Conditions, Tree Fall, or Construction blockage where the construction permit holder is not identified as a private contractor. Includes all 1,007 events in the current BUTA active backlog attributable to these categories. |
+| **Traffic Event** | Any incident categorised as: Vehicle Breakdown, Accident, Congestion, VIP Movement, Procession, Public Event, or Protest. These remain exclusively within BUTA's operational responsibility. |
+| **Escalation Trigger** | The point at which an Infrastructure Event unresolved within the agreed maximum resolution time is formally transferred from BUTA's system to BBMP's work order system via the ASTRAM-BBMP data interface. |
+| **Resolution** | An Infrastructure Event is considered resolved when the physical obstruction or hazard is removed, the road is passable, and the resolution is confirmed by a field officer in both ASTRAM and BBMP's work order system. |
+| **SLA Breach** | Failure by BBMP to resolve an escalated Infrastructure Event within the maximum resolution time specified in Schedule A of this agreement. |
+| **Joint Review Board** | A committee comprising the Commissioner of Traffic (BUTA), the Chief Engineer — Roads (BBMP), and the Commissioner of BBMP, or their authorised nominees. Meets monthly. |
+
+	**2.****	THE INFRASTRUCTURE BACKLOG: QUANTIFIED SCOPE**
+
+The following table sets out the exact composition of the 1,007-event infrastructure backlog as at the date of this agreement. These figures are derived from the ASTRAM dataset (8,173 records, November 2023 – April 2024) and represent events that are active in BUTA's system but cannot be resolved by traffic management action alone.
+
+| **Event Category** | **Count** | **% Backlog** | **Responsible Party** | **Max Days** | **Escalation Path** |
+| --- | --- | --- | --- | --- | --- |
+| **Pot Holes** | 358 | **35.6%** | BBMP — Roads Dept | **14 days** | Chief Engineer, Roads |
+| **Water Logging** | 195 | **19.4%** | BBMP — Stormwater Dept | **7 days** | Chief Engineer, SWD |
+| **Tree Fall** | 102 | **10.1%** | BBMP — Horticulture Dept | **48 hours** | Chief Horticulture Officer |
+| **Road Conditions** | 74 | **7.3%** | BBMP — Roads Dept | **21 days** | Chief Engineer, Roads |
+| **Construction (unattributed)** | 73 | **7.3%** | BBMP / BDA | **7 days** | Commissioner, BDA |
+| **Others — Infrastructure** | 203 | **20.2%** | BBMP (triage required) | **10 days** | BBMP Commissioner |
+| **TOTAL INFRASTRUCTURE BACKLOG** | **1,007** | **100%** | **BBMP (primary)** | Per category | 12.3% of all BUTA records |
+
+	**3.****	OBLIGATIONS OF EACH PARTY**
+
+**3.1  Obligations of BUTA**
+
+- Maintain the ASTRAM Infrastructure Event queue as a separate, non-commingled dataset from the Traffic Event queue with effect from the date of this agreement.
+
+- Transmit a formal escalation notification to BBMP for every Infrastructure Event that remains unresolved 48 hours after first logging, using the agreed ASTRAM-BBMP data interface or, until the interface is operational, a daily escalation report in the format specified in Schedule B.
+
+- Provide BBMP with read-only access to the ASTRAM Infrastructure Event dashboard so that BBMP can monitor its own unresolved event queue in real time.
+
+- Report monthly to the Joint Review Board on: total infrastructure events escalated, events resolved within SLA, events in breach, and the impact of the backlog on BUTA's demand modelling accuracy.
+
+- Not count unresolved Infrastructure Events against BUTA's operational performance metrics, provided formal escalation has been issued.
+
+**3.2  Obligations of BBMP**
+
+- Acknowledge every escalation notification from BUTA within 24 hours of receipt, assigning a BBMP work order number that will be entered into the ASTRAM event record.
+
+- Resolve every escalated Infrastructure Event within the maximum resolution times specified in Schedule A of this agreement.
+
+- Notify BUTA of resolution via the ASTRAM-BBMP interface or, until the interface is operational, by direct update to the ASTRAM event record.
+
+- Designate a single BBMP Escalation Coordinator — a named officer of not less than Joint Commissioner rank — who will be the primary point of contact for all escalations under this agreement. Name and contact details to be provided within 7 days of signing.
+
+- Report monthly to the Joint Review Board on: work orders received, work orders resolved within SLA, work orders in breach and reason for breach, and resource constraints preventing resolution.
+
+- For Tree Fall events specifically: deploy a response team within 6 hours of escalation receipt. Tree falls carry a 39.4% road closure rate and are the fastest-escalating severity event in the BUTA dataset.
+
+	**4.****	ESCALATION PROTOCOL — STEP BY STEP**
+
+The following procedure applies to every Infrastructure Event from the moment it is logged in ASTRAM.
+
+| **Step** | **Trigger** | **Action** | **Owner** |
+| --- | --- | --- | --- |
+| **Step 1** | **Event logged in ASTRAM** | System auto-categorises as Infrastructure Event based on event type. Event appears in both BUTA Traffic queue and BBMP Escalation queue simultaneously. | ASTRAM system |
+| **Step 2** | **48 hours unresolved** | BUTA issues formal escalation notification to BBMP Escalation Coordinator. Notification includes: event ID, location (GPS + junction), event type, date logged, photos if available. | BUTA duty officer |
+| **Step 3** | **24 hours after escalation** | BBMP acknowledges, assigns work order number, provides ETA. BUTA enters BBMP work order number into ASTRAM event record. | BBMP Escalation Coordinator |
+| **Step 4** | **SLA deadline (see Schedule A)** | If BBMP has not resolved: event is flagged SLA BREACH in ASTRAM. Joint Review Board is automatically notified. Breach is recorded in the monthly performance report. | ASTRAM system + Joint Review Board |
+| **Step 5** | **Event resolved** | BBMP notifies BUTA. Field officer confirms resolution in ASTRAM with GPS pin + photo. Event closed in both systems. Resolution time recorded for SLA performance tracking. | Both parties |
+| **Step 6** | **Monthly review** | Joint Review Board reviews all escalations, breaches, and systemic patterns. Minutes published within 5 working days. Action items assigned with named owners and deadlines. | Joint Review Board |
+
+	**5.****	SLA BREACH CONSEQUENCES**
+
+The purpose of this section is to create genuine accountability at the political level, not merely administrative record-keeping. The consequence structure escalates with the number of breaches in a rolling 30-day period.
+
+| **Breach Threshold** | **Consequence** | **Mechanism** |
+| --- | --- | --- |
+| **1–2 breaches in 30 days** | Formal written notice from BUTA Commissioner to BBMP Commissioner. Breach logged in monthly performance report. | ASTRAM breach report + letter from Commissioner of Traffic |
+| **3–5 breaches in 30 days** | Emergency session of Joint Review Board within 5 working days. BBMP must present a written corrective action plan within 10 working days. | Joint Review Board convened by Commissioner of Traffic |
+| **>****5 breaches in 30 days** | Escalation to the Department of Urban Development Secretary. BUTA Commissioner may request a Ministerial-level review. | Letter from Commissioner of Traffic to Secretary, Urban Development |
+| **Systematic breach (****>****5 breaches in 3 consecutive months)** | This SLA is referred to the Karnataka Lokayukta for review. BBMP’s infrastructure budget allocation for road maintenance is subject to audit. | Formal referral by Joint Review Board to Lokayukta |
+
+	**6.****	PERFORMANCE METRICS AND REPORTING**
+
+**6.1  Monthly Report — Published within 5 working days of month end**
+
+- Total Infrastructure Events escalated in the month, by category
+
+- Events resolved within SLA: count and percentage
+
+- Events in SLA breach: count, category, and reason for breach
+
+- Mean resolution time per category vs. SLA target
+
+- Chronic repeat locations: junctions or roads with more than 3 Infrastructure Events in a 30-day window
+
+- Impact on BUTA demand model: reduction in infrastructure events as a percentage of total ASTRAM records
+
+**6.2  North Star Metric for This SLA**
+
+**Metric: **Infrastructure event SLA compliance rate = events resolved within maximum resolution time / total events escalated
+
+**Baseline: **0% (no formal SLA exists at signing)
+
+**Year 1 target: **≥75% of all escalated infrastructure events resolved within SLA
+
+**Year 2 target: **≥90% compliance rate sustained for three consecutive months
+
+	**7.****	TERM, AMENDMENT, AND DISPUTE RESOLUTION**
+
+- This agreement comes into effect on the date of the last signature below and remains in force for a period of 24 months, after which it is automatically renewed unless either party provides 60 days written notice of termination.
+
+- Either party may propose amendments to this agreement. Amendments must be agreed in writing by both Commissioners and are effective 30 days from the date of the amendment letter.
+
+- Disputes arising from this agreement that cannot be resolved by the Joint Review Board within 30 days shall be referred to the Secretary, Department of Urban Development for final determination.
+
+- This agreement does not create any new statutory powers or override existing statutory obligations of either party. It establishes operational protocols and accountability mechanisms within existing legal frameworks.
+
+**SCHEDULE A — MAXIMUM RESOLUTION TIMES**
+
+| **Event Category** | **First Response** | **Full Resolution** | **Notes** |
+| --- | --- | --- | --- |
+| **Tree Fall** | **6 hours** | **48 hours** | 39.4% closure rate — highest urgency |
+| **Water Logging — passable** | **24 hours** | **7 days** | BBMP Stormwater drainage clearance |
+| **Water Logging — impassable** | **6 hours** | **72 hours** | Emergency pump deployment required |
+| **Pothole — lane obstruction** | **48 hours** | **14 days** | Road patching or temporary repair minimum |
+| **Pothole — safety hazard** | **24 hours** | **7 days** | Depth >15cm or affecting >50% lane width |
+| **Road Conditions — damage** | **48 hours** | **21 days** | Surface restoration, not patching |
+| **Construction — unattributed** | **24 hours** | **7 days** | BBMP to identify contractor or take direct action |
+
+**SIGNATURES**
+
+| **FOR AND ON BEHALF OF BUTA** Name: ___________________________________ Designation: Commissioner of Traffic Date:   ___________________________________ Signature: ___________________________________ Official Seal: | **FOR AND ON BEHALF OF BBMP** Name: ___________________________________ Designation: Commissioner, BBMP Date:   ___________________________________ Signature: ___________________________________ Official Seal: |
+| --- | --- |
+
+WITNESS 1: ________________________  WITNESS 2: ________________________  Date: ________________
+
+*Data source: ASTRAM dataset, 8,173 incidents, Nov 2023–Apr 2024. Infrastructure backlog analysis prepared by the Bengaluru Urban Traffic Authority in collaboration with the Astram product team.*
